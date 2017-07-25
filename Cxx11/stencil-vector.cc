@@ -62,124 +62,76 @@
 
 #include "prk_util.h"
 
-const int radius = RADIUS;
+#include "stencil_seq.hpp"
 
-template <int radius, bool star>
-void do_stencil(int n, double weight[2*radius+1][2*radius+1], std::vector<double> & in, std::vector<double> & out)
-{
-    for (auto i=radius; i<n-radius; i++) {
-      for (auto j=radius; j<n-radius; j++) {
-        if (star) {
-          for (auto jj=-radius; jj<=radius; jj++) {
-            out[i*n+j] += weight[radius][radius+jj]*in[i*n+j+jj];
-          }
-          for (auto ii=-radius; ii<0; ii++) {
-            out[i*n+j] += weight[radius+ii][radius]*in[(i+ii)*n+j];
-          }
-          for (auto ii=1; ii<=radius; ii++) {
-            out[i*n+j] += weight[radius+ii][radius]*in[(i+ii)*n+j];
-          }
-        } else {
-          for (auto ii=-radius; ii<=radius; ii++) {
-            for (auto jj=-radius; jj<=radius; jj++) {
-              out[i*n+j] += weight[radius+ii][radius+jj]*in[(i+ii)*n+j+jj];
-            }
-          }
-        }
-      }
-    }
-}
-
-int main(int argc, char * argv[])
+int main(int argc, char* argv[])
 {
   std::cout << "Parallel Research Kernels version " << PRKVERSION << std::endl;
-  std::cout << "C++11 stencil execution on 2D grid" << std::endl;
+  std::cout << "C++11 Stencil execution on 2D grid" << std::endl;
 
   //////////////////////////////////////////////////////////////////////
-  // process and test input parameters
+  // Process and test input parameters
   //////////////////////////////////////////////////////////////////////
 
-  if (argc != 3 && argc !=4){
-    std::cout << "Usage: " << argv[0] << " <# iterations> <array dimension>" << std::endl;
-    return(EXIT_FAILURE);
+  int iterations;
+  int n, radius;
+  bool star = true;
+  try {
+      if (argc < 3){
+        throw "Usage: <# iterations> <array dimension> [<star/grid> <radius>]";
+      }
+
+      // number of times to run the algorithm
+      iterations  = std::atoi(argv[1]);
+      if (iterations < 1) {
+        throw "ERROR: iterations must be >= 1";
+      }
+
+      // linear grid dimension
+      n  = std::atoi(argv[2]);
+      if (n < 1) {
+        throw "ERROR: grid dimension must be positive";
+      } else if (n > std::floor(std::sqrt(INT_MAX))) {
+        throw "ERROR: grid dimension too large - overflow risk";
+      }
+
+      // stencil pattern
+      if (argc > 3) {
+          auto stencil = std::string(argv[3]);
+          auto grid = std::string("grid");
+          star = (stencil == grid) ? false : true;
+      }
+
+      // stencil radius
+      radius = 2;
+      if (argc > 4) {
+          radius = std::atoi(argv[4]);
+      }
+
+      if ( (radius < 1) || (2*radius+1 > n) ) {
+        throw "ERROR: Stencil radius negative or too large";
+      }
+  }
+  catch (const char * e) {
+    std::cout << e << std::endl;
+    return 1;
   }
 
-  // number of times to run the algorithm
-  int iterations  = std::atoi(argv[1]);
-  if (iterations < 1){
-    std::cout << "ERROR: iterations must be >= 1" << iterations << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  // linear grid dimension
-  int n  = std::atoi(argv[2]);
-  if (n < 1){
-    std::cout << "ERROR: grid dimension must be positive: " << n << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  if (radius < 1) {
-    std::cout << "ERROR: Stencil radius " << radius << " should be positive " << std::endl;
-    exit(EXIT_FAILURE);
-  } else if (2*radius+1 > n) {
-    std::cout << "ERROR: Stencil radius " << radius << " exceeds grid size " << n << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  std::cout << "Grid size            = " << n << std::endl;
-  std::cout << "Radius of stencil    = " << radius << std::endl;
-#ifdef STAR
-  std::cout << "Type of stencil      = star" << std::endl;
-#else
-  std::cout << "Type of stencil      = compact" << std::endl;
-#endif
-  std::cout << "Data type            = double precision" << std::endl;
-  std::cout << "Compact representation of stencil loop body" << std::endl;
   std::cout << "Number of iterations = " << iterations << std::endl;
+  std::cout << "Grid size            = " << n << std::endl;
+  std::cout << "Type of stencil      = " << (star ? "star" : "grid") << std::endl;
+  std::cout << "Radius of stencil    = " << radius << std::endl;
 
   //////////////////////////////////////////////////////////////////////
   // Allocate space and perform the computation
   //////////////////////////////////////////////////////////////////////
 
-  // weights of points in the stencil
-  //std::array< std::array<double,2*radius+1>, 2*radius+1> weight;
-  double weight[2*radius+1][2*radius+1];
-  for (auto jj=-radius; jj<=radius; jj++) {
-    for (auto ii=-radius; ii<=radius; ii++) {
-      weight[ii+radius][jj+radius] = 0.0;
-    }
-  }
-
-  // fill the stencil weights to reflect a discrete divergence operator
-#ifdef STAR
-  const int stencil_size = 4*radius+1;
-  for (auto ii=1; ii<=radius; ii++) {
-    weight[radius][radius+ii] = weight[radius+ii][radius] = +1./(2*ii*radius);
-    weight[radius][radius-ii] = weight[radius-ii][radius] = -1./(2*ii*radius);
-  }
-#else
-  const int stencil_size = (2*radius+1)*(2*radius+1);
-  for (auto jj=1; jj<=radius; jj++) {
-    for (auto ii=-jj+1; ii<jj; ii++) {
-      weight[radius+ii][radius+jj] = +1./(4*jj*(2*jj-1)*radius);
-      weight[radius+ii][radius-jj] = -1./(4*jj*(2*jj-1)*radius);
-      weight[radius+jj][radius+ii] = +1./(4*jj*(2*jj-1)*radius);
-      weight[radius-jj][radius+ii] = -1./(4*jj*(2*jj-1)*radius);
-    }
-    weight[radius+jj][radius+jj]   = +1./(4*jj*radius);
-    weight[radius-jj][radius-jj]   = -1./(4*jj*radius);
-  }
-#endif
-
-  // interior of grid with respect to stencil
-  size_t active_points = static_cast<size_t>(n-2*radius)*static_cast<size_t>(n-2*radius);
+  auto stencil_time = 0.0;
 
   std::vector<double> in;
   std::vector<double> out;
-  in.resize(n*n);
+  in.resize(n*n,0.0);
   out.resize(n*n,0.0);
-
-  auto stencil_time = 0.0;
 
   // initialize the input array
   for (auto i=0; i<n; i++) {
@@ -193,11 +145,33 @@ int main(int argc, char * argv[])
     if (iter==1) stencil_time = prk::wtime();
 
     // Apply the stencil operator
-#ifdef STAR
-    do_stencil<RADIUS,true>(n, weight, in, out);
-#else
-    do_stencil<RADIUS,false>(n, weight, in, out);
-#endif
+    if (star) {
+        switch (radius) {
+            case 1: star1(n, in, out); break;
+            case 2: star2(n, in, out); break;
+            case 3: star3(n, in, out); break;
+            case 4: star4(n, in, out); break;
+            case 5: star5(n, in, out); break;
+            case 6: star6(n, in, out); break;
+            case 7: star7(n, in, out); break;
+            case 8: star8(n, in, out); break;
+            case 9: star9(n, in, out); break;
+            default: { std::cerr << "star template not instantiated for radius " << radius << "\n"; break; }
+        }
+    } else {
+        switch (radius) {
+            case 1: grid1(n, in, out); break;
+            case 2: grid2(n, in, out); break;
+            case 3: grid3(n, in, out); break;
+            case 4: grid4(n, in, out); break;
+            case 5: grid5(n, in, out); break;
+            case 6: grid6(n, in, out); break;
+            case 7: grid7(n, in, out); break;
+            case 8: grid8(n, in, out); break;
+            case 9: grid9(n, in, out); break;
+            default: { std::cerr << "grid template not instantiated for radius " << radius << "\n"; break; }
+        }
+    }
     // add constant to solution to force refresh of neighbor data, if any
     std::transform(in.begin(), in.end(), in.begin(), [](double c) { return c+=1.0; });
 
@@ -207,6 +181,9 @@ int main(int argc, char * argv[])
   //////////////////////////////////////////////////////////////////////
   // Analyze and output results.
   //////////////////////////////////////////////////////////////////////
+
+  // interior of grid with respect to stencil
+  size_t active_points = static_cast<size_t>(n-2*radius)*static_cast<size_t>(n-2*radius);
 
   // compute L1 norm in parallel
   double norm = 0.0;
@@ -230,6 +207,7 @@ int main(int argc, char * argv[])
     std::cout << "L1 norm = " << norm
               << " Reference L1 norm = " << reference_norm << std::endl;
 #endif
+    const int stencil_size = star ? 4*radius+1 : (2*radius+1)*(2*radius+1);
     size_t flops = (2L*(size_t)stencil_size+1L) * active_points;
     auto avgtime = stencil_time/iterations;
     std::cout << "Rate (MFlops/s): " << 1.0e-6 * static_cast<double>(flops)/avgtime

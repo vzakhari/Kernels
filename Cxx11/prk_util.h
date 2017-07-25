@@ -29,11 +29,23 @@
 /// ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 /// POSSIBILITY OF SUCH DAMAGE.
 
+#ifndef PRK_UTIL_H
+#define PRK_UTIL_H
+
+#if !(defined(__cplusplus) && (__cplusplus >= 201103L))
+# error You need a C++11 compiler.
+#endif
+
+#define PRAGMA(x) _Pragma(#x)
+
 #include <cstdio>  // atoi
 #include <cstdlib> // getenv
+#include <cstdint>
+#include <climits>
 #include <cmath>   // fabs
 #include <cassert>
 
+#include <string>
 #include <iostream>
 #include <iomanip> // std::setprecision
 #include <exception>
@@ -48,8 +60,95 @@
 #include <numeric>
 #include <algorithm>
 
-#if !(defined(__cplusplus) && (__cplusplus >= 201103L))
-#error You need a C++11 compiler.
+#ifdef _OPENMP
+# include <omp.h>
+# define OMP_PARALLEL(x) PRAGMA(omp parallel x)
+# define OMP_PARALLEL_FOR_REDUCE(x) PRAGMA(omp parallel for reduction (x) )
+# define OMP_MASTER PRAGMA(omp master)
+# define OMP_BARRIER PRAGMA(omp barrier)
+# define OMP_FOR(x) PRAGMA(omp for x)
+# define OMP_FOR_REDUCE(x) PRAGMA(omp for reduction (x) )
+// OpenMP SIMD if supported, else not.
+# if (_OPENMP >= 201300)
+#  define OMP_SIMD PRAGMA(omp simd)
+#  define OMP_FOR_SIMD PRAGMA(omp for simd)
+#  define OMP_TASK(x) PRAGMA(omp task x)
+#  define OMP_TASKLOOP(x) PRAGMA(omp taskloop x)
+#  define OMP_TASKWAIT PRAGMA(omp taskwait)
+#  define OMP_ORDERED(x) PRAGMA(omp ordered x)
+#  define OMP_TARGET(x) PRAGMA(omp target x)
+#  define OMP_DECLARE_TARGET PRAGMA(omp declare target)
+#  define OMP_END_DECLARE_TARGET PRAGMA(omp end declare target)
+# else
+#  define OMP_SIMD
+#  define OMP_FOR_SIMD PRAGMA(omp for)
+#  define OMP_TASK(x)
+#  define OMP_TASKLOOP(x)
+#  define OMP_TASKWAIT
+#  define OMP_ORDERED(x)
+#  define OMP_TARGET(x)
+#  define OMP_DECLARE_TARGET
+#  define OMP_END_DECLARE_TARGET
+# endif
+#else
+# define OMP_PARALLEL(x)
+# define OMP_PARALLEL_FOR_REDUCE(x)
+# define OMP_MASTER
+# define OMP_BARRIER
+# define OMP_FOR(x)
+# define OMP_FOR_REDUCE(x)
+# define OMP_SIMD
+# define OMP_FOR_SIMD
+# define OMP_TASK(x)
+# define OMP_TASKLOOP(x)
+# define OMP_TASKWAIT
+# define OMP_ORDERED(x)
+# define OMP_TARGET(x)
+# define OMP_DECLARE_TARGET
+# define OMP_END_DECLARE_TARGET
+#endif
+
+#ifdef __cilk
+# include <cilk/cilk.h>
+#endif
+
+#if defined(__INTEL_COMPILER) && !defined(PRAGMA_OMP_SIMD)
+# define PRAGMA_SIMD PRAGMA(simd)
+#else
+# define PRAGMA_SIMD
+#endif
+
+#ifdef USE_TBB
+# include <tbb/tbb.h>
+# include <tbb/parallel_for.h>
+# include <tbb/blocked_range.h>
+#endif
+
+#ifdef USE_BOOST
+# include <boost/range/irange.hpp>
+#endif
+
+#ifdef USE_PSTL
+# if defined(__INTEL_COMPILER) && (__INTEL_COMPILER >= 1800)
+#  include <pstl/execution>
+#  include <pstl/algorithm>
+#  include <pstl/numeric>
+#  include <pstl/memory>
+# elif defined(__GNUC__) && defined(__GNUC_MINOR__) && \
+       ( (__GNUC__ >= 8) || (__GNUC__ == 7) && (__GNUC_MINOR__ >= 2) )
+#  include <parallel/algorithm>
+#  include <parallel/numeric>
+# endif
+#endif
+
+#ifdef USE_KOKKOS
+# include <typeinfo>
+# include <Kokkos_Core.hpp>
+#endif
+
+#ifdef USE_RAJA
+# define RAJA_ENABLE_NESTED 1
+# include "RAJA/RAJA.hpp"
 #endif
 
 #define RESTRICT __restrict__
@@ -58,28 +157,18 @@ namespace prk {
 
     static inline double wtime(void)
     {
+#ifdef _OPENMP
+        return omp_get_wtime();
+#else
         using t = std::chrono::high_resolution_clock;
         auto c = t::now().time_since_epoch().count();
         auto n = t::period::num;
         auto d = t::period::den;
         double r = static_cast<double>(c)/static_cast<double>(d)*static_cast<double>(n);
         return r;
-    }
-
-    /* This function is separate from prk_malloc() because
-     * we need it when calling prk_shmem_align(..)           */
-    static inline int get_alignment(void)
-    {
-        /* a := alignment */
-#ifdef PRK_ALIGNMENT
-        int a = PRK_ALIGNMENT;
-#else
-        char* temp = getenv("PRK_ALIGNMENT");
-        int a = (temp!=NULL) ? atoi(temp) : 64;
-        if (a < 8) a = 8;
-        assert( (a & (~a+1)) == a ); /* is power of 2? */
 #endif
-        return a;
     }
 
 } // namespace prk
+
+#endif /* PRK_UTIL_H */
