@@ -78,16 +78,15 @@ void run(cl::Context context, int iterations, int order)
   //////////////////////////////////////////////////////////////////////
 
   const size_t nelems = (size_t)order * (size_t)order;
-  std::vector<T> h_a;
-  std::vector<T> h_b;
-  h_a.resize(nelems);
-  h_b.resize(nelems, (T)0);
+  std::vector<T> h_a(nelems);
+  std::vector<T> h_b(nelems, T(0));
+
   // fill A with the sequence 0 to order^2-1 as doubles
   std::iota(h_a.begin(), h_a.end(), (T)0);
 
   // copy input from host to device
-  cl::Buffer d_a = cl::Buffer(context, begin(h_a), end(h_a), true);
-  cl::Buffer d_b = cl::Buffer(context, begin(h_b), end(h_b), true);
+  cl::Buffer d_a = cl::Buffer(context, begin(h_a), end(h_a), false);
+  cl::Buffer d_b = cl::Buffer(context, begin(h_b), end(h_b), false);
 
   auto trans_time = 0.0;
 
@@ -166,6 +165,8 @@ int main(int argc, char* argv[])
       order = std::atol(argv[2]);
       if (order <= 0) {
         throw "ERROR: Matrix Order must be greater than 0";
+      } else if (order > std::floor(std::sqrt(INT_MAX))) {
+        throw "ERROR: matrix dimension too large - overflow risk";
       }
   }
   catch (const char * e) {

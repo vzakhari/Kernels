@@ -78,7 +78,6 @@ program main
   real(kind=REAL64), allocatable :: grid(:,:)           ! array holding grid values
   ! runtime variables
   integer(kind=INT32) :: i, j, k
-  integer ::  me, nt
   real(kind=REAL64) ::  t0, t1, pipeline_time, avgtime  ! timing parameters
   real(kind=REAL64), parameter ::  epsilon=1.D-8        ! error tolerance
 
@@ -143,6 +142,8 @@ program main
     grid(i,1) = real(i-1,REAL64)
   enddo
 
+  t0 = 0
+
   !$acc data pcopy(grid)
   do k=0,iterations
 
@@ -161,9 +162,10 @@ program main
   enddo
 
   t1 = prk_get_wtime()
-  pipeline_time = t1 - t0
 
   !$acc end data
+
+  pipeline_time = t1 - t0
 
   ! ********************************************************************
   ! ** Analyze and output results.

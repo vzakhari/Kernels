@@ -67,7 +67,7 @@ program main
   integer(kind=INT64) ::  bytes                     ! combined size of matrices
   ! runtime variables
   integer(kind=INT32) ::  i, j, k
-  integer(kind=INT32) ::  it, jt, tile_size
+  !integer(kind=INT32) ::  it, jt, tile_size
   real(kind=REAL64) ::  abserr, addit, temp         ! squared error
   real(kind=REAL64) ::  t0, t1, trans_time, avgtime ! timing parameters
   real(kind=REAL64), parameter ::  epsilon=1.D-8    ! error tolerance
@@ -102,16 +102,16 @@ program main
   endif
 
   ! same default as the C implementation
-  tile_size = 32
-  if (command_argument_count().gt.2) then
-      call get_command_argument(3,argtmp,arglen,err)
-      if (err.eq.0) read(argtmp,'(i32)') tile_size
-  endif
-  if ((tile_size .lt. 1).or.(tile_size.gt.order)) then
-    write(*,'(a,i5,a,i5)') 'WARNING: tile_size ',tile_size,&
-                           ' must be >= 1 and <= ',order
-    tile_size = order ! no tiling
-  endif
+  !tile_size = 32
+  !if (command_argument_count().gt.2) then
+  !    call get_command_argument(3,argtmp,arglen,err)
+  !    if (err.eq.0) read(argtmp,'(i32)') tile_size
+  !endif
+  !if ((tile_size .lt. 1).or.(tile_size.gt.order)) then
+  !  write(*,'(a,i5,a,i5)') 'WARNING: tile_size ',tile_size,&
+  !                         ' must be >= 1 and <= ',order
+  !  tile_size = order ! no tiling
+  !endif
 
   ! ********************************************************************
   ! ** Allocate space for the input and transpose matrix
@@ -134,18 +134,18 @@ program main
   write(*,'(a,i8)') 'Matrix order         = ', order
   !write(*,'(a,i8)') 'Tile size            = ', tile_size
 
-  t0 = 0
-
   !$omp parallel do simd collapse(2)
   do j=1,order
     do i=1,order
       A(i,j) = real(order,REAL64) * real(j-1,REAL64) + real(i-1,REAL64)
-      B(i,j) = 0.0
+      B(i,j) = 0
     enddo
   enddo
   !$omp end parallel do simd
 
   !$omp target data map(to: A) map(tofrom: B) map(from:trans_time)
+
+  t0 = 0
 
   do k=0,iterations
 
@@ -155,7 +155,7 @@ program main
     do j=1,order
       do i=1,order
         B(j,i) = B(j,i) + A(i,j)
-        A(i,j) = A(i,j) + 1.0
+        A(i,j) = A(i,j) + 1
       enddo
     enddo
     !$omp end target teams distribute parallel do simd
@@ -163,10 +163,9 @@ program main
   enddo ! iterations
 
   t1 = omp_get_wtime()
+  trans_time = t1 - t0
 
   !$omp end target data
-
-  trans_time = t1 - t0
 
   ! ********************************************************************
   ! ** Analyze and output results.

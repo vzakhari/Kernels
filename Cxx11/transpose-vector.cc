@@ -56,12 +56,12 @@
 
 int main(int argc, char * argv[])
 {
-  //////////////////////////////////////////////////////////////////////
-  /// Read and test input parameters
-  //////////////////////////////////////////////////////////////////////
-
   std::cout << "Parallel Research Kernels version " << PRKVERSION << std::endl;
   std::cout << "C++11 Matrix transpose: B = A^T" << std::endl;
+
+  //////////////////////////////////////////////////////////////////////
+  // Read and test input parameters
+  //////////////////////////////////////////////////////////////////////
 
   int iterations;
   int order;
@@ -71,23 +71,22 @@ int main(int argc, char * argv[])
         throw "Usage: <# iterations> <matrix order> [tile size]";
       }
 
-      // number of times to do the transpose
       iterations  = std::atoi(argv[1]);
       if (iterations < 1) {
         throw "ERROR: iterations must be >= 1";
       }
 
-      // order of a the matrix
       order = std::atoi(argv[2]);
       if (order <= 0) {
         throw "ERROR: Matrix Order must be greater than 0";
+      } else if (order > std::floor(std::sqrt(INT_MAX))) {
+        throw "ERROR: matrix dimension too large - overflow risk";
       }
 
       // default tile size for tiling of local transpose
       tile_size = (argc>3) ? std::atoi(argv[3]) : 32;
       // a negative tile size means no tiling of the local transpose
       if (tile_size <= 0) tile_size = order;
-
   }
   catch (const char * e) {
     std::cout << e << std::endl;
@@ -99,15 +98,14 @@ int main(int argc, char * argv[])
   std::cout << "Tile size            = " << tile_size << std::endl;
 
   //////////////////////////////////////////////////////////////////////
-  /// Allocate space for the input and transpose matrix
+  // Allocate space and perform the computation
   //////////////////////////////////////////////////////////////////////
 
   auto trans_time = 0.0;
 
-  std::vector<double> A;
-  std::vector<double> B;
-  A.resize(order*order);
-  B.resize(order*order,0.0);
+  std::vector<double> A(order*order);
+  std::vector<double> B(order*order,0.0);
+
   // fill A with the sequence 0 to order^2-1 as doubles
   std::iota(A.begin(), A.end(), 0.0);
 
@@ -145,7 +143,7 @@ int main(int argc, char * argv[])
   //////////////////////////////////////////////////////////////////////
 
   const auto addit = (iterations+1.) * (iterations/2.);
-  auto abserr = 0.0;
+  double abserr(0);
   // TODO: replace with std::generate, std::accumulate, or similar
   for (auto j=0; j<order; j++) {
     for (auto i=0; i<order; i++) {
